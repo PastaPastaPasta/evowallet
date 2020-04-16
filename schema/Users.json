@@ -1,0 +1,56 @@
+{
+ "$id": "CGre4SQZKtZvirZLmtLQfsZZFTg9zv6PdjnoHb5ULS2a",
+ "$schema": "https://schema.dash.org/dpp-0-4-0/meta/data-contract",
+ "ownerId": "5chvpRcSvSeYCfrtBDoVmyyXqpcXD87MTPKNAYpgDZNX",
+ "documents": {
+  "Users": {
+   "indices": [
+    {
+     "properties": [
+      {
+       "pubkey": "asc"
+      }
+     ],
+     "unique": true
+    },
+    {
+     "properties": [
+      {
+       "identityId": "asc"
+      }
+     ],
+     "unique": true
+    },
+    {
+     "properties": [
+      {
+       "dpnsDocId": "asc"
+      }
+     ],
+     "unique": true
+    }
+   ],
+   "required": [
+    "pubkey",
+    "identityId",
+    "dpnsDocId",
+    "name"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "pubkey": {
+     "type": "string"
+    },
+    "dpnsDocId": {
+     "type": "string"
+    },
+    "identityId": {
+     "type": "string"
+    }
+   },
+   "additionalProperties": false
+  }
+ }
+}
