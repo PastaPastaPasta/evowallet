@@ -1,13 +1,43 @@
 import Dash from 'dash'
+import { encrypt, decrypt } from 'dashmachine-crypto'
+// Zeppole cotton cake peanut home marriage glance fiber faculty tone void clap crack
+// EvoManiac2 identity B5oV5iB1eP9AJwBHEaK4bgSBtUM83pMsf7a9uyGCiAc7
+
+// mnemonic guess nothing mean alarm mention usual milk elbow turn history great gown
+
+// EvoManiac3 issue swear smooth sheriff reveal myth tuna pyramid boost unaware album wing
+
+// nice video reunion royal insane end hope wish start excite creek attract
 // Decrypted mnemonic: potato south distance mind dress join vital topic oyster work catch animal
-const DashmachineCrypto = require('dashmachine-crypto')
+// beach all salute mouse gasp fortune valley office sweet palace traffic curious
+// const DashmachineCrypto = require('dashmachine-crypto')
 const CryptoJS = require('crypto-js')
 
+const IdentitiesCache = {}
+const cachedOrGetIdentity = async (client, identityId) => {
+  console.log(
+    'Checking IdentitiesCache for known identities using IdentityId',
+    identityId
+  )
+  let identity
+  if (identityId in IdentitiesCache) {
+    identity = IdentitiesCache[identityId]
+    console.log('Found existing cached identity', identity)
+  } else {
+    identity = await client.platform.identities.get(identityId)
+    IdentitiesCache[identity.id] = identity
+    console.log('Fetched unknown identity', identity)
+  }
+  console.log({ IdentitiesCache })
+  return identity
+}
 // eslint-disable-next-line no-unused-vars
 
-const deriveDip9DelegatedCredentialsFromTimestamp = (timestamp) => {
+// TODO remove dependence on global var 'client'
+// eslint-disable-next-line no-unused-vars
+async function deriveDip9DelegatedCredentialsFromTimestamp(timestamp) {
   console.log('deriveDip9DelegatedCredentialsFromTimestamp()')
-  const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
+  const curIdentityHDKey = client.account.keyChain.HDPrivateKey
   console.log({ curIdentityHDKey })
   const specialFeatureKey = curIdentityHDKey.derive(
     `m/9'/1'/4'/1'/${timestamp}` // LIVENET switch to 9/5
@@ -66,7 +96,6 @@ let registerNameInterval
 let registerUserInterval
 let loginPinInterval
 
-// mnemonic: "come sight trade detect travel hazard suit rescue special clip choose crouch"
 const getInitState = () => {
   console.log('getinitstate')
   return {
@@ -118,10 +147,6 @@ export const getters = {
     const { accounts } = state
     return accounts
   },
-  freshAddress() {
-    const address = client.account.getUnusedAddress().address
-    return address
-  },
   async confirmedBalance() {
     // TODO weird thing: this function fires before await initWallet() resolves
     // console.log("get balance not ready Confirmed Balance", client.account.getConfirmedBalance());
@@ -129,16 +154,16 @@ export const getters = {
 
     // FIXME When client is set to undefined, this getter is still called and throws
     try {
-      await client.isReady()
+      const { account } = client
       console.log(
         'get balance Confirmed Balance',
-        client.account.getConfirmedBalance()
+        await account.getConfirmedBalance()
       )
       console.log(
         'get balance Unconfirmed Balance',
-        client.account.getUnconfirmedBalance()
+        account.getUnconfirmedBalance()
       )
-      return client.account.getConfirmedBalance()
+      return account.getConfirmedBalance()
     } catch (e) {
       console.log('Error getting balance, client is: ', client)
       return -1
@@ -147,9 +172,6 @@ export const getters = {
   setupFinished(state) {
     console.log(state)
     return state.mnemonic && state.identityId
-  },
-  clientIsReady() {
-    return client && client.isReady()
   },
 }
 export const mutations = {
@@ -251,8 +273,180 @@ export const mutations = {
   },
 }
 export const actions = {
-  getCurPubKey() {
-    const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
+  async fetchPaymentRequests({ dispatch, state }) {
+    // TODO cache & paginate using timestamp
+
+    const queryOpts = {
+      limit: 100,
+      startAt: 1,
+      orderBy: [['timestamp', 'desc']],
+      where: [['requesteeUserId', '==', state.name.docId]],
+    }
+
+    const paymentRequests = await dispatch('queryDocuments', {
+      dappName: 'PaymentRequest',
+      typeLocator: 'PaymentRequest',
+      queryOpts,
+    })
+    console.log('paymentRequests :>> ', paymentRequests)
+
+    // No transactions, return early
+    if (!paymentRequests) return []
+
+    // TODO dedupe by refId
+
+    const collatedRequests = {}
+    for (const item of paymentRequests) {
+      const doc = item.toJSON()
+      const { refId } = doc
+
+      console.log(doc.memo, doc.encFiatAmount, doc.refId)
+
+      collatedRequests[refId] = collatedRequests[refId]
+        ? [...collatedRequests[refId], doc]
+        : [doc]
+    }
+    console.log(collatedRequests)
+
+    const sortedRequests = []
+    for (const refId in collatedRequests) {
+      const docs = collatedRequests[refId]
+      const lastTimestamp = docs[0].timestamp
+      // const firstTimestamp = docs[docs.length - 1].timestamp
+
+      sortedRequests.push({
+        // firstTimestamp,
+        lastTimestamp,
+        countDocs: docs.length,
+        docs,
+      })
+    }
+
+    sortedRequests.sort(function (a, b) {
+      return b.lastTimestamp - a.lastTimestamp
+    })
+
+    console.dir(sortedRequests)
+    sortedRequests.forEach((doc) => console.log(doc))
+
+    // Add transaction and status info
+    const paymentRequestsWithUTXOs = await Promise.all(
+      sortedRequests.map(async (pr) => {
+        const utxos = await dispatch('getUTXO', pr.docs[0].encAddress)
+        const summary = await dispatch(
+          'getAddressSummary',
+          pr.docs[0].encAddress
+        )
+
+        // console.log('Getting UTXO for :>> ', pr.encAddress, utxos)
+
+        // Add the payment request status
+        let status
+
+        const requestedSatoshis = parseInt(pr.docs[0].encSatoshis)
+
+        if (requestedSatoshis === 0 && summary.totalTxAppearances === 0) {
+          status = 'Cancelled'
+        } else if (
+          requestedSatoshis === 0 &&
+          summary.totalBalanceSat === 0 &&
+          summary.totalTxAppearances > 1
+        ) {
+          status = 'Refunded'
+        } else if (
+          summary.totalBalanceSat === 0 &&
+          summary.txAppearances === 0
+        ) {
+          status = 'Pending'
+        }
+        // TODO once deductFee is fixed, should be 0
+        else if (Math.abs(requestedSatoshis - summary.totalBalanceSat) < 1000) {
+          status = 'Paid'
+          // if (summary.txAppearances > 1) status = 'Amended'
+        } else if (summary.totalBalanceSat > requestedSatoshis) {
+          status = 'Overpaid'
+        } else if (summary.totalBalanceSat < requestedSatoshis) {
+          status = 'Underpaid'
+        }
+
+        return {
+          ...pr,
+          summary,
+          utxos,
+          status,
+        }
+      })
+    )
+    console.log('paymentRequestsWithUTXOs :>> ', paymentRequestsWithUTXOs)
+    return paymentRequestsWithUTXOs
+  },
+  // eslint-disable-next-line
+  async getUTXO({ state }, address) {
+    const DAPIclient = await client.getDAPIClient()
+    const UTXO = await DAPIclient.getUTXO(address)
+    return UTXO
+  },
+  // eslint-disable-next-line
+  async getAddressSummary({ state }, address) {
+    const DAPIclient = await client.getDAPIClient()
+    const summary = await DAPIclient.getAddressSummary(address)
+    summary.totalBalanceSat = summary.balanceSat + summary.unconfirmedBalanceSat
+    summary.totalTxAppearances =
+      summary.txAppearances + summary.unconfirmedAppearances
+    return summary
+  },
+  async freshAddress() {
+    const account = await client.wallet.getAccount()
+    const address = account.getUnusedAddress().address
+    return address
+  },
+  async fetchPaymentRequestss({ dispatch }) {
+    // TODO cache & paginate using timestamp
+    const queryOpts = {
+      limit: 10,
+      startAt: 1,
+      orderBy: [['timestamp', 'desc']],
+    }
+    const transactions = await dispatch('queryDocuments', {
+      contract: 'PaymentRequest',
+      typeLocator: 'PaymentRequest',
+      queryOpts,
+    })
+    console.log('transactions :>> ', transactions)
+
+    return transactions
+  },
+  // eslint-disable-next-line no-empty-pattern
+  async encryptDelegatedPrivKey({}, { delCredPrivKey, identityId }) {
+    const account = await client.wallet.getAccount()
+    const myPrivKey = account
+      .getIdentityHDKeyByIndex(0, 0)
+      .privateKey.toString()
+
+    const otherIdentity = await cachedOrGetIdentity(client, identityId)
+    const otherPubKey = otherIdentity.publicKeys[0].data
+
+    return encrypt(myPrivKey, delCredPrivKey, otherPubKey).data
+  },
+  // eslint-disable-next-line no-empty-pattern
+  async decryptRequestPin({}, { encRequestPin, identityId }) {
+    const account = await client.wallet.getAccount()
+    const myPrivKey = account
+      .getIdentityHDKeyByIndex(0, 0)
+      .privateKey.toString()
+
+    const otherIdentity = await cachedOrGetIdentity(client, identityId)
+    const otherPubKey = otherIdentity.publicKeys[0].data
+
+    return decrypt(myPrivKey, encRequestPin, otherPubKey)
+  },
+  clientIsReady() {
+    return !!client
+  },
+  async getCurPubKey() {
+    const { account } = client
+    const curIdentityHDKey = account.keyChain.HDPrivateKey
+
     console.log({ publicKeyString: curIdentityHDKey.publicKey.toString() })
 
     const publicKey = curIdentityHDKey.publicKey.toString()
@@ -307,12 +501,20 @@ export const actions = {
   },
   // eslint-disable-next-line no-unused-vars
   async sendDash({ dispatch }, { toAddress, satoshis }) {
-    const { account } = client
+    const account = await client.wallet.getAccount()
     try {
+      console.log('toAddress :>> ', toAddress)
+      console.log('satoshis :>> ', satoshis)
+      console.log('typeof satoshis :>> ', typeof satoshis)
+      console.log('balance', account.getTotalBalance())
       const transaction = account.createTransaction({
         recipient: toAddress,
         satoshis: satoshis,
+        deductFee: false,
       })
+      console.log('transaction :>> ', transaction)
+      // transaction.addData('ybseBqQLqLvpaWik8bPnbN4Dd47bHSuzGS')
+      // const signedTransaction = account.sign(transaction)
       const result = await account.broadcastTransaction(transaction)
       console.log('Transaction broadcast!\nTransaction ID:', result)
       dispatch('showSnackbar', {
@@ -321,16 +523,37 @@ export const actions = {
       })
       // dispatch('refreshWallet')
     } catch (e) {
-      console.error('Something went wrong:', e)
       dispatch('showSnackbar', {
         text: e.message,
       })
       throw e
     }
   },
+  async fetchTransactions({ state, dispatch }) {
+    // TODO cache & paginate using timestamp
+    const queryOpts = {
+      limit: 10,
+      startAt: 1,
+      orderBy: [['timestamp', 'desc']],
+      where: [['requesteeUserId', '==', state.name.docId]],
+    }
+    const transactions = await dispatch('queryDocuments', {
+      dappName: 'PaymentRequest',
+      typeLocator: 'PaymentRequest',
+      queryOpts,
+    })
+    console.log('transactions :>> ', transactions)
+    const DAPIclient = await client.getDAPIClient()
+    const transactionsWithUTXOs = await Promise.all(
+      transactions.map(async (tx) => {
+        const utxos = await DAPIclient.getUTXO(tx.data.encAddress)
+        return { ...tx, utxos }
+      })
+    )
+    return transactionsWithUTXOs
+  },
   async fetchSignups({ dispatch, commit, getters }) {
     console.log('fetchSignups()')
-    await client.isReady()
     const queryOpts = {
       startAt: 1,
       limit: 5, // TODO fix select DISTINCT problem and paginate dApps
@@ -431,15 +654,16 @@ export const actions = {
     } else {
       try {
         // TODO reenable faucet
-        // await this.getMagicInternetMoney()
+        await dispatch('getMagicInternetMoney')
+
         // await this.getMagicInternetMoney( // get two drips -> two UTXOs, register idenity and name without waiting for chained confirmations
-        console.log('not getting a drip, faucet is broken')
+        // console.log('not getting a drip, faucet is broken')
       } catch (e) {
-        this.$store.commit(
+        commit(
           'setClientErrors',
           e.message +
             ' | Faucet not responding, manually send some evoDash to ' +
-            this.freshAddress
+            this.freshAddress()
         )
       }
 
@@ -479,9 +703,9 @@ export const actions = {
   },
   async addCurrentAccount({ state, commit, dispatch }, pin) {
     const account = {}
-    console.log('add current account', client.wallet.mnemonic)
+    console.log('add current account', await client.wallet.exportWallet())
     account.mnemonic = await dispatch('encryptMnemonic', {
-      mnemonic: client.wallet.mnemonic,
+      mnemonic: await client.wallet.exportWallet(),
       pin,
     })
     // account.mnemonic = this.encryptMnemonic(client.wallet.mnemonic, pin)
@@ -491,186 +715,211 @@ export const actions = {
 
     commit('addAccount', account)
   },
-  async verifyAppRequest({ state }, actionRequest) {
-    // TODO remove async
-    const { loginPin } = state
-    console.log(loginPin)
-    const dappUserIdentity = await client.platform.identities.get(
-      '9jm6AbrR5wQTYp3SWfDJAmX7ca3VkwTvFXmUp8hXWjUe'
-    )
-    console.log(dappUserIdentity)
-    const dappUserPublicKey = dappUserIdentity.publicKeys[0].data.toString(
-      'base64'
-    )
-    // foundUser.publicKey = foundUser.identity.publicKeys[0].data;
+  // async verifyAppRequest({ state }, actionRequest) {
+  //   // TODO remove async
+  //   const { loginPin } = state
+  //   console.log(loginPin)
+  //   const dappUserIdentity = await client.platform.identities.get(
+  //     '9jm6AbrR5wQTYp3SWfDJAmX7ca3VkwTvFXmUp8hXWjUe'
+  //   )
+  //   console.log(dappUserIdentity)
+  //   const dappUserPublicKey = dappUserIdentity.publicKeys[0].data.toString(
+  //     'base64'
+  //   )
+  //   // foundUser.publicKey = foundUser.identity.publicKeys[0].data;
 
-    const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
-      .privateKey
+  //   const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
+  //     .privateKey
 
-    // const plainUID_PIN = loginPin.toString()
-    const plainUID_PIN = '54321' // TODO make dynamic
+  //   // const plainUID_PIN = loginPin.toString()
+  //   const plainUID_PIN = '54321' // TODO make dynamic
 
-    const hashedAndEncryptedUID_PIN = actionRequest.uidPin
+  //   const hashedAndEncryptedUID_PIN = actionRequest.uidPin
 
-    const decryptedUID_PIN = DashmachineCrypto.decrypt(
-      curIdentityPrivKey,
-      hashedAndEncryptedUID_PIN,
-      dappUserPublicKey
-    ).data
-    const verified = DashmachineCrypto.verify(plainUID_PIN, decryptedUID_PIN)
-    console.log({ actionRequest }, 'pin verified?', verified)
+  //   const decryptedUID_PIN = DashmachineCrypto.decrypt(
+  //     curIdentityPrivKey,
+  //     hashedAndEncryptedUID_PIN,
+  //     dappUserPublicKey
+  //   ).data
+  //   const verified = DashmachineCrypto.verify(plainUID_PIN, decryptedUID_PIN)
+  //   console.log({ actionRequest }, 'pin verified?', verified)
 
-    return verified
-  },
+  //   return verified
+  // },
   // TODOO add targetcontractid to contract
-  async processActionRequestPayload({ state, getters }, { actionRequest }) {
+  async processActionRequestPayload(
+    { state, getters, dispatch },
+    { actionRequest }
+  ) {
     console.log({ actionRequest })
     const { payload, $ownerId } = actionRequest.doc
     console.log({ payload, $ownerId })
     const userIdentity = await client.platform.identities.get(state.identityId)
-    client.wallet.getUnconfirmedBalance
 
-    ///
-    /// Here switch and sort out the primitives / init DashJS.client for specific contracts
-    ///
+    // TODO use  from helper
 
     const timestampMS = Date.now()
     const timestamp = Math.floor(timestampMS / 1000)
 
     const primitiveType = Object.keys(payload)[0]
     console.log({ primitiveType })
-    let document = {}
+    const documents = []
+    let fragment = {}
 
-    switch (primitiveType) {
-      case 'DelegatedCredentials':
-        {
-          const {
-            privateKey,
-            publicKey,
-          } = deriveDip9DelegatedCredentialsFromTimestamp(timestamp)
+    // eslint-disable-next-line no-unused-vars
+    let addDelegatedCredentials = false
+    if (primitiveType != 'DelegatedCredentials') {
+      // TODO DelegatedCredentials should be its own request type, not DocumentActionRequest
 
-          document = {
-            encPvtKey: privateKey,
-            pubKey: publicKey,
-            delegateIdentityId: actionRequest.doc.$ownerId, // Using the idenity of the doc that was verified against pin
-            unixTimestampExpiration: timestamp + 1200, // TODO change 20min (1200s) timeout to variable
-            //  timestamp = Math.floor(Date.now() / 1000) // For next contract iteration
-          }
-        }
-        break
-
-      default:
-        Object.assign(document, payload[primitiveType])
-        document.unixTimestamp = timestamp
-        document.accountDocId = getters['curAccountDocId'] // TODO V2 should be userId
-        document.contractId = actionRequest.doc.$dataContractId
+      Object.assign(fragment, payload[primitiveType])
+      fragment.unixTimestamp = timestamp
+      fragment.accountDocId = getters['curAccountDocId'] // TODO V2 should be userId
+      fragment.contractId = actionRequest.doc.$dataContractId
       // dappName TODO currently insecure duplication by dApp Browser
       // dappIcon
+
+      // Create document from fragment and add to batch broadcast array
+      const document = await client.platform.documents.create(
+        `primitives.${primitiveType}`, // TODO make contractId + typeselector dynamic
+        userIdentity,
+        fragment // TODO make dynamic
+      )
+      console.log({ document })
+      console.log({ documents })
+      documents.push(document)
+      console.log({ document })
+      console.log({ documents })
+
+      // If user signs up, also log him in
+      if (primitiveType === 'Signup' && document.data.isRegistered === true) {
+        addDelegatedCredentials = true
+      }
     }
 
-    const payloadDocument = await client.platform.documents.create(
-      `primitives.${primitiveType}`, // TODO make contractId + typeselector dynamic
-      userIdentity,
-      document // TODO make dynamic
-    )
-    console.log('Broadcasting DocumentActionRequest payload:')
-    console.dir({ payloadDocument })
-    console.dir({ document })
+    // TODO DelegatedCredentials should be its own request type, not DocumentActionRequest
+    if (primitiveType === 'DelegatedCredentials' || addDelegatedCredentials) {
+      const {
+        privateKey,
+        publicKey,
+      } = await deriveDip9DelegatedCredentialsFromTimestamp(timestamp)
+      console.log(actionRequest.doc)
+      const delegateIdentityId = actionRequest.doc.$ownerId
+      fragment = {
+        encPvtKey: await dispatch('encryptDelegatedPrivKey', {
+          delCredPrivKey: privateKey,
+          identityId: delegateIdentityId,
+        }),
+        pubKey: publicKey,
+        delegateIdentityId, // Using the idenity of the doc that was verified against pin
+        unixTimestampExpiration: timestamp + 1200, // TODO change 20min (1200s) timeout to variable
+        //  timestamp = Math.floor(Date.now() / 1000) // For next contract iteration
+      }
+
+      // Create document from fragment and add to batch broadcast array
+      const document = await client.platform.documents.create(
+        `primitives.DelegatedCredentials`, // TODO make contractId + typeselector dynamic
+        userIdentity,
+        fragment // TODO make dynamic
+      )
+      documents.push(document)
+    }
+
+    console.log('Broadcasting DocumentActionRequest payload documents:')
+    console.dir({ documents })
     const documentBatch = {
-      create: [payloadDocument],
+      create: documents,
       replace: [],
       delete: [],
     }
-
     const submitStatus = await client.platform.documents.broadcast(
       documentBatch,
       userIdentity
     )
     console.log({ submitStatus })
   },
-  async encryptStuff({ state }, appDoc) {
-    const { loginPin } = state
-    const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
-      .privateKey
-    console.log('curIdentityPrivKey', curIdentityPrivKey.toString())
+  // async encryptStuff({ state }, appDoc) {
+  //   const { loginPin } = state
+  //   const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
+  //     .privateKey
+  //   console.log('curIdentityPrivKey', curIdentityPrivKey.toString())
 
-    const senderPublicKey = 'Ag/YNnbAfG0IpNeH4pfMzgqIsgooR36s5MzzYJV76TpO' // TODO derive from dash identity
+  //   const senderPublicKey = 'Ag/YNnbAfG0IpNeH4pfMzgqIsgooR36s5MzzYJV76TpO' // TODO derive from dash identity
 
-    //reference: Vendor userID (Reference)
-    // //CW decrypts the nonce
-    const encryptedNonce = appDoc.data.nonce
-    console.log('encryptedNonce', encryptedNonce)
-    const decryptedNonce = DashmachineCrypto.decrypt(
-      curIdentityPrivKey,
-      encryptedNonce,
-      senderPublicKey
-    ).data
-    console.log('decrypted nonce:', decryptedNonce)
-    //vid_pin: Encrypted Hash of [Vendor nonce + Vendor userID + CW Pin)
-    const plainVID_PIN = decryptedNonce.concat(
-      state.wdsVendorId,
-      loginPin.toString()
-    )
-    console.log('plainVID_PIN', plainVID_PIN)
-    //hash then encrypt for the vendors PK
-    const hashedVID_PIN = DashmachineCrypto.hash(plainVID_PIN).data
-    console.log('hashedVID_PIN', hashedVID_PIN)
-    const encryptedVID_PIN = DashmachineCrypto.encrypt(
-      curIdentityPrivKey,
-      hashedVID_PIN,
-      senderPublicKey
-    ).data
-    console.log('encryptedVID_PIN', encryptedVID_PIN)
+  //   //reference: Vendor userID (Reference)
+  //   // //CW decrypts the nonce
+  //   const encryptedNonce = appDoc.data.nonce
+  //   console.log('encryptedNonce', encryptedNonce)
+  //   const decryptedNonce = DashmachineCrypto.decrypt(
+  //     curIdentityPrivKey,
+  //     encryptedNonce,
+  //     senderPublicKey
+  //   ).data
+  //   console.log('decrypted nonce:', decryptedNonce)
+  //   //vid_pin: Encrypted Hash of [Vendor nonce + Vendor userID + CW Pin)
+  //   const plainVID_PIN = decryptedNonce.concat(
+  //     state.wdsVendorId,
+  //     loginPin.toString()
+  //   )
+  //   console.log('plainVID_PIN', plainVID_PIN)
+  //   //hash then encrypt for the vendors PK
+  //   const hashedVID_PIN = DashmachineCrypto.hash(plainVID_PIN).data
+  //   console.log('hashedVID_PIN', hashedVID_PIN)
+  //   const encryptedVID_PIN = DashmachineCrypto.encrypt(
+  //     curIdentityPrivKey,
+  //     hashedVID_PIN,
+  //     senderPublicKey
+  //   ).data
+  //   console.log('encryptedVID_PIN', encryptedVID_PIN)
 
-    //status: Encrypted [status+entropy] (0 = valid)
-    const statusCode = 0
-    const status = statusCode
-      .toString()
-      .concat(DashmachineCrypto.generateEntropy())
-    console.log('status', status)
-    const encryptedStatus = DashmachineCrypto.encrypt(
-      curIdentityPrivKey,
-      status,
-      senderPublicKey
-    ).data
-    console.log('encryptedStatus', encryptedStatus)
+  //   //status: Encrypted [status+entropy] (0 = valid)
+  //   const statusCode = 0
+  //   const status = statusCode
+  //     .toString()
+  //     .concat(DashmachineCrypto.generateEntropy())
+  //   console.log('status', status)
+  //   const encryptedStatus = DashmachineCrypto.encrypt(
+  //     curIdentityPrivKey,
+  //     status,
+  //     senderPublicKey
+  //   ).data
+  //   console.log('encryptedStatus', encryptedStatus)
 
-    //LoginResponse DocData
-    const loginResponseDocOpts = {
-      reference: state.wdsVendorId,
-      vid_pin: encryptedVID_PIN,
-      status: encryptedStatus,
-      temp_timestamp: appDoc.data.temp_timestamp,
-    }
-    console.log('loginResponseDocOpts')
-    console.dir(loginResponseDocOpts)
+  //   //LoginResponse DocData
+  //   const loginResponseDocOpts = {
+  //     reference: state.wdsVendorId,
+  //     vid_pin: encryptedVID_PIN,
+  //     status: encryptedStatus,
+  //     temp_timestamp: appDoc.data.temp_timestamp,
+  //   }
+  //   console.log('loginResponseDocOpts')
+  //   console.dir(loginResponseDocOpts)
 
-    const userIdentity = await client.platform.identities.get(state.identityId)
-    const loginResponseDocument = await client.platform.documents.create(
-      'wdsContract.TweetResponse',
-      userIdentity,
-      loginResponseDocOpts
-    )
-    console.log('loginReponse doc:')
-    console.dir(loginResponseDocument)
-    const documentBatch = {
-      create: [loginResponseDocument],
-      replace: [],
-      delete: [],
-    }
+  //   const userIdentity = await client.platform.identities.get(state.identityId)
+  //   const loginResponseDocument = await client.platform.documents.create(
+  //     'wdsContract.TweetResponse',
+  //     userIdentity,
+  //     loginResponseDocOpts
+  //   )
+  //   console.log('loginReponse doc:')
+  //   console.dir(loginResponseDocument)
+  //   const documentBatch = {
+  //     create: [loginResponseDocument],
+  //     replace: [],
+  //     delete: [],
+  //   }
 
-    const submitStatus = await client.platform.documents.broadcast(
-      documentBatch,
-      userIdentity
-    )
-    console.log(submitStatus)
-  },
+  //   const submitStatus = await client.platform.documents.broadcast(
+  //     documentBatch,
+  //     userIdentity
+  //   )
+  //   console.log(submitStatus)
+  // },
   freshLoginPins({ commit, state }) {
     if (loginPinInterval) clearInterval(loginPinInterval)
     commit('setLoginPin')
 
     const refreshInterval = 300000
-    loginPinInterval = setInterval(function() {
+    loginPinInterval = setInterval(function () {
       if (state.loginPinTimeLeft < 1) {
         commit('setLoginPin')
         commit('setLoginPinTimeLeft', refreshInterval)
@@ -701,19 +950,24 @@ export const actions = {
         { service: 'seed-4.evonet.networks.dash.org' },
         { service: 'seed-5.evonet.networks.dash.org' },
       ],
-      mnemonic: await dispatch('decryptMnemonic', {
-        encMnemonic: state.mnemonic,
-        pin: mnemonicPin,
-      }),
+      wallet: {
+        mnemonic: await dispatch('decryptMnemonic', {
+          encMnemonic: state.mnemonic,
+          pin: mnemonicPin,
+        }),
+      },
       apps: {
-        dpns: {
-          contractId: '7PBvxeGpj7SsWfvDSa31uqEMt58LAiJww7zNcVRP1uEM',
-        },
+        // dpns: {
+        //   contractId: '7PBvxeGpj7SsWfvDSa31uqEMt58LAiJww7zNcVRP1uEM',
+        // },
+
+        users: { contractId: '3bhAjxGB5rZ8sTB1nEj1fC6SCZV6c3XEbX8Lm2arVbjA' },
         primitives: {
-          contractId: '9FhqPBkmrmNkoUGw5qQgv7x6MUJJNNS4sfrTeUB1UsYk',
+          contractId: 'FtNpnUh4tdUmH6gpusHEToczNMwmf37h79pWkdwXgh6h',
         },
-        users: {
-          contractId: 'CGre4SQZKtZvirZLmtLQfsZZFTg9zv6PdjnoHb5ULS2a',
+        jembe: { contractId: '4gzbZindZD91ehrTRRYVrXJAKq5wLPVtJiSLP71JAgeG' },
+        PaymentRequest: {
+          contractId: '9uzEu3KLVQNttzqDNK46pCCCMwB2YDyxK1FDUNTpqYRH',
         },
       },
     })
@@ -722,82 +976,40 @@ export const actions = {
     clientTimeout = setTimeout(() => {
       commit('setClientErrors', 'Connection to Evonet timed out.')
     }, 500000) // TODO DEPLOY set sane timeout
-    const isReady = await client.isReady()
     clearInterval(clientTimeout)
 
-    //
-    //
-    // DEPLOY remove cli debug outputs
-    //
-    //
-    const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
-    console.log({ curIdentityHDKey })
-    console.log({ publicKey: curIdentityHDKey })
-    console.log({ publicKeyString: curIdentityHDKey.publicKey.toString() })
-    console.log(curIdentityHDKey.toString('base64'))
-
-    const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
-    console.log('private key', curIdentityPrivKey.toString())
-    // const curIdentityPubKey = client.account.getIdentityHDKey(0, 'user')
-    //   .publickey
-    // console.log('public key', curIdentityPubKey.toString())
-
-    var derivedByArgument = curIdentityPrivKey.derive("m/1/2'")
-    console.log({ derivedByArgument })
-    console.log('derived pv key', derivedByArgument.privateKey)
-    console.log(
-      'derived pv key to address',
-      derivedByArgument.privateKey.toAddress()
-    )
-    console.log(derivedByArgument.toString())
-
-    let address = derivedByArgument.privateKey.toAddress()
-    let privateKey = derivedByArgument.privateKey.toString()
-    let publicKey = derivedByArgument.publicKey
-
-    console.log({
-      address,
-      privateKey,
-      publicKey,
-      pubstring: publicKey.toString(),
-    })
-
-    // const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
-    // .publicKey
-    // console.log({ curIdentityHDKey })
-    const encryptedVID_PIN = DashmachineCrypto.encrypt(
-      curIdentityPrivKey,
-      '54321',
-      '0201e5b73c30a443081a0157f96e0e4ed5dfca3dcf304be86970be13c87cad6609'
-    ).data
-    console.log('encryptedVID_PIN', encryptedVID_PIN)
-
-    console.log({ isReady })
-    // commit('setAndEncMnemonic', {
-    //   mnemonic: client.wallet.mnemonic,
-    //   pin: '12345',
-    // })
+    client.account = await client.wallet.getAccount()
     console.log({ client })
+    console.log(client.account.getUnusedAddress())
 
-    const { account } = client
-
-    console.log('init Funding address', account.getUnusedAddress().address)
-    commit('setFundingAddress', account.getUnusedAddress().address)
-    console.log('init Confirmed Balance', account.getConfirmedBalance())
-    console.log('init Unconfirmed Balance', account.getUnconfirmedBalance())
-
-    return client.isReady()
+    console.log(
+      'init Funding address',
+      await client.account.getUnusedAddress().address
+    )
+    commit('setFundingAddress', client.account.getUnusedAddress().address)
+    console.log('init Confirmed Balance', client.account.getConfirmedBalance())
+    console.log(
+      'init Unconfirmed Balance',
+      client.account.getUnconfirmedBalance()
+    )
   },
   async getMagicInternetMoney() {
     console.log('Awaiting faucet drip..')
-    const address = client.account.getUnusedAddress().address
+    const { account } = client
+    const address = account.getUnusedAddress().address
     console.log('... for address: ' + address)
     try {
-      const req = await this.$axios.get(
-        `https://qetrgbsx30.execute-api.us-west-1.amazonaws.com/stage/?dashAddress=${address}`,
-        { crossdomain: true }
-      )
+      // const req = await this.$axios.get(
+      //   `https://qetrgbsx30.execute-api.us-west-1.amazonaws.com/stage/?dashAddress=${address}`,
+      //   { crossdomain: true }
+      // )
       // const req = await this.$axios.get(`http://localhost:5000/evodrip/us-central1/evofaucet/drip/${address}`)
+      // const req = await this.$axios.get(
+      //   `http://localhost:5000/evodrip/us-central1/evofaucet/drip/${address}`
+      // )
+      const req = await this.$axios.get(
+        `https://us-central1-evodrip.cloudfunctions.net/evofaucet/drip/${address}`
+      )
       console.log('... faucet dropped.')
       console.log(req)
     } catch (e) {
@@ -808,8 +1020,6 @@ export const actions = {
   async registerIdentity({ commit }) {
     console.log('Registering identity...')
     try {
-      await client.isReady()
-      console.log(await client.isReady())
       const identity = await client.platform.identities.register()
       commit('setIdentity', identity.id)
       console.log({ identity })
@@ -820,17 +1030,15 @@ export const actions = {
   },
   registerIdentityOnceBalance({ dispatch }) {
     if (registerIdentityInterval) clearInterval(registerIdentityInterval)
-
-    registerIdentityInterval = setInterval(function() {
+    console.log({ client })
+    registerIdentityInterval = setInterval(async function () {
+      const { account } = client
       console.log('Waiting for positive balance to register identity..')
-      console.log(
-        'init Funding address',
-        client.account.getUnusedAddress().address
-      )
-      console.log(client.account.getTotalBalance())
-      console.log(client.account.getConfirmedBalance())
-      console.log(client.account.getUnconfirmedBalance())
-      if (client.account.getConfirmedBalance() > 0) {
+      console.log('init Funding address', account.getUnusedAddress().address)
+      console.log(account.getTotalBalance())
+      console.log(account.getConfirmedBalance())
+      console.log(account.getUnconfirmedBalance())
+      if (account.getConfirmedBalance() > 10000) {
         dispatch('registerIdentity')
         clearInterval(registerIdentityInterval)
       }
@@ -839,15 +1047,17 @@ export const actions = {
   async registerNameOnceBalance({ state, dispatch }) {
     if (registerNameInterval) clearInterval(registerNameInterval)
     console.log('Awaiting client ..')
-    const clientReady = await client.account.isReady()
-    console.log('..client is ready.', clientReady)
-    if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
+    console.log({ client })
+    const account = await client.wallet.getAccount()
+
+    console.log({ account })
+    if (account.getConfirmedBalance() > 10000 && state.identityId) {
       dispatch('registerName')
     } else {
-      registerNameInterval = setInterval(function() {
+      registerNameInterval = setInterval(function () {
         console.log('Waiting for positive balance to register name..')
-        console.log(client.account.getConfirmedBalance())
-        if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
+        console.log(account.getConfirmedBalance())
+        if (account.getConfirmedBalance() > 10000 && state.identityId) {
           dispatch('registerName')
           clearInterval(registerNameInterval)
         }
@@ -857,12 +1067,12 @@ export const actions = {
   async registerUserOnceBalance({ state, dispatch }, { userDoc }) {
     if (registerUserInterval) clearInterval(registerUserInterval)
     console.log('Awaiting client ..')
-    const clientReady = await client.account.isReady()
-    console.log('..client is ready.', clientReady)
-    if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
+    // console.log('..client is ready.', clientReady)
+    const { account } = client
+    if (account.getConfirmedBalance() > 10000 && state.identityId) {
       dispatch('registerUser', { userDoc })
     } else {
-      registerUserInterval = setInterval(function() {
+      registerUserInterval = setInterval(function () {
         console.log('Waiting for positive balance to register name..')
         console.log(client.account.getConfirmedBalance())
         if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
@@ -870,6 +1080,49 @@ export const actions = {
           clearInterval(registerUserInterval)
         }
       }, 5000)
+    }
+  },
+  // eslint-disable-next-line no-unused-vars
+  async fetchUserDoc({ dispatch }, label) {
+    const document = await client.platform.names.get(label)
+    return document
+  },
+  async submitDocument(
+    { dispatch, state },
+    { contract, typeLocator, document }
+  ) {
+    const { identityId } = state
+
+    console.log(
+      `Submitting document to ${contract}.${typeLocator} using identityId ${identityId}:`,
+      document
+    )
+
+    const { platform } = client
+
+    try {
+      const identity = await platform.identities.get(identityId)
+      // const identity = await cachedOrGetIdentity(client, identityId)
+      // console.log({ identity })
+
+      const createdDocument = await platform.documents.create(
+        `${contract}.${typeLocator}`,
+        identity,
+        document
+      )
+      console.log('Broadcasting created document:', { createdDocument })
+
+      const documentBatch = {
+        create: [createdDocument],
+        replace: [],
+        delete: [],
+      }
+
+      const result = await platform.documents.broadcast(documentBatch, identity)
+      console.log('result :>> ', result)
+    } catch (e) {
+      dispatch('showSnackbar', { text: e.message })
+      console.error('Something went wrong:', e)
     }
   },
   async registerUser({ dispatch }, { userDoc }) {
@@ -882,7 +1135,8 @@ export const actions = {
     console.log('Found valid identity:')
     console.log({ identity })
 
-    const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
+    const { account } = client
+    const curIdentityHDKey = account.keyChain.HDPrivateKey
     console.log({ publicKeyString: curIdentityHDKey.publicKey.toString() })
 
     const publicKey = curIdentityHDKey.publicKey.toString()
@@ -1000,7 +1254,6 @@ export const actions = {
     console.log({ dappName, typeLocator, queryOpts })
     commit('setSyncing', true)
     try {
-      await client.isReady()
       const documents = await client.platform.documents.get(
         `${dappName}.${typeLocator}`,
         queryOpts
@@ -1015,7 +1268,6 @@ export const actions = {
     }
   },
   async getContract({ state }) {
-    await client.isReady()
     const contract = await client.platform.contracts.get(state.wdsContractId)
     console.log({ contract })
     return contract

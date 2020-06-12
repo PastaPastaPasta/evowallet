@@ -1,16 +1,16 @@
 <template>
   <v-container :fill-height="!$vuetify.breakpoint.xs">
-    <v-alert dense outlined color="blue">
+    <!-- <v-alert dense outlined color="blue">
       <div>
         <strong>Heads Up:</strong> There is no working auto-faucet, use the
         faucet or console to send some eDuffs to:
         {{ this.$store.state.fundingAddress }}
       </div>
-    </v-alert>
+    </v-alert> -->
 
     <Mobile class="hidden-sm-and-up" /> <Desktop class="hidden-xs-only mt-n4" />
     <v-overlay :value="!!mnemonic">
-      <v-stepper v-model="stepperOnboard" light style="max-width:545px">
+      <v-stepper v-model="stepperOnboard" light style="max-width: 545px;">
         <v-stepper-header>
           <v-stepper-step :complete="stepperOnboard > 1" step="1"
             >Save passphrase</v-stepper-step
