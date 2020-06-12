@@ -13,6 +13,31 @@
           </v-list-item-content>
         </v-list-item>
         <v-divider />
+        <v-list-item exact nuxt to="/scanuser">
+          <v-list-item-action>
+            <v-icon color="green">mdi-qrcode-scan</v-icon>
+          </v-list-item-action>
+          <v-list-item-content>
+            <v-list-item-title>Scan User</v-list-item-title>
+          </v-list-item-content>
+        </v-list-item>
+        <v-list-item exact nuxt to="/paymentRequestsHistory">
+          <v-list-item-action>
+            <v-icon color="green">mdi-format-list-bulleted</v-icon>
+          </v-list-item-action>
+          <v-list-item-content>
+            <v-list-item-title>Payment History</v-list-item-title>
+          </v-list-item-content>
+        </v-list-item>
+        <v-list-item exact nuxt to="/actions">
+          <v-list-item-action>
+            <v-icon color="green">mdi-gesture-tap-button</v-icon>
+          </v-list-item-action>
+          <v-list-item-content>
+            <v-list-item-title>dApp Actions</v-list-item-title>
+          </v-list-item-content>
+        </v-list-item>
+        <v-divider />
         <v-list-item
           v-for="(item, i) in accounts"
           :key="i"
@@ -150,7 +175,7 @@ export default {
     }
   },
   computed: {
-    ...mapGetters(['accounts', 'freshAddress']),
+    ...mapGetters(['accounts']),
   },
   created() {
     console.log(this.$store.state)
@@ -213,10 +238,10 @@ export default {
       this.clearSession()
       this.$router.replace('/logout')
     },
-    addAccount() {
+    async addAccount() {
       this.drawer = false
       this.overlayUnlock = false
-      this.$router.push('/')
+      await this.$router.push('/')
       this.clearSession()
       // this.initOrCreateAccount()
       this.$store.dispatch('initOrCreateAccount', { mnemonicPin: '' })

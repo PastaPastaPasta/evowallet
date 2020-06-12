@@ -90,6 +90,7 @@ export default {
       'getCurPubKey',
     ]),
     async login() {
+      await this.clearSession()
       await this.$store.dispatch('setAndEncMnemonic', {
         mnemonic: this.mnemonicText,
         pin: this.mnemonicPin,
@@ -115,7 +116,6 @@ export default {
 
       console.log('Restoring from mnemonic via userhashmap', userDoc)
       // FXIME sort out which are actually async and are causing race conditions
-      await this.clearSession()
 
       // this.$store.commit('setMnemonicAsIs', account.mnemonic)
       await this.$store.commit('setIdentity', userDoc.data.identityId)
