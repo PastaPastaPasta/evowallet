@@ -1,13 +1,16 @@
 import Dash from 'dash'
+// nice video reunion royal insane end hope wish start excite creek attract
 // Decrypted mnemonic: potato south distance mind dress join vital topic oyster work catch animal
-const DashmachineCrypto = require('dashmachine-crypto')
+// beach all salute mouse gasp fortune valley office sweet palace traffic curious
+// const DashmachineCrypto = require('dashmachine-crypto')
 const CryptoJS = require('crypto-js')
 
 // eslint-disable-next-line no-unused-vars
 
-const deriveDip9DelegatedCredentialsFromTimestamp = (timestamp) => {
+const deriveDip9DelegatedCredentialsFromTimestamp = async (timestamp) => {
   console.log('deriveDip9DelegatedCredentialsFromTimestamp()')
-  const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
+  const account = await client.wallet.getAccount()
+  const curIdentityHDKey = account.getIdentityHDKey(0, 'user')
   console.log({ curIdentityHDKey })
   const specialFeatureKey = curIdentityHDKey.derive(
     `m/9'/1'/4'/1'/${timestamp}` // LIVENET switch to 9/5
@@ -129,16 +132,17 @@ export const getters = {
 
     // FIXME When client is set to undefined, this getter is still called and throws
     try {
-      await client.isReady()
+      // await client.isReady()
+      const account = await client.wallet.getAccount()
       console.log(
         'get balance Confirmed Balance',
-        client.account.getConfirmedBalance()
+        await account.getConfirmedBalance()
       )
       console.log(
         'get balance Unconfirmed Balance',
-        client.account.getUnconfirmedBalance()
+        account.getUnconfirmedBalance()
       )
-      return client.account.getConfirmedBalance()
+      return account.getConfirmedBalance()
     } catch (e) {
       console.log('Error getting balance, client is: ', client)
       return -1
@@ -147,9 +151,6 @@ export const getters = {
   setupFinished(state) {
     console.log(state)
     return state.mnemonic && state.identityId
-  },
-  clientIsReady() {
-    return client && client.isReady()
   },
 }
 export const mutations = {
@@ -251,8 +252,12 @@ export const mutations = {
   },
 }
 export const actions = {
-  getCurPubKey() {
-    const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
+  clientIsReady() {
+    return !!client
+  },
+  async getCurPubKey() {
+    const account = await client.wallet.getAccount()
+    const curIdentityHDKey = account.getIdentityHDKey(0, 'user')
     console.log({ publicKeyString: curIdentityHDKey.publicKey.toString() })
 
     const publicKey = curIdentityHDKey.publicKey.toString()
@@ -330,7 +335,6 @@ export const actions = {
   },
   async fetchSignups({ dispatch, commit, getters }) {
     console.log('fetchSignups()')
-    await client.isReady()
     const queryOpts = {
       startAt: 1,
       limit: 5, // TODO fix select DISTINCT problem and paginate dApps
@@ -491,37 +495,37 @@ export const actions = {
 
     commit('addAccount', account)
   },
-  async verifyAppRequest({ state }, actionRequest) {
-    // TODO remove async
-    const { loginPin } = state
-    console.log(loginPin)
-    const dappUserIdentity = await client.platform.identities.get(
-      '9jm6AbrR5wQTYp3SWfDJAmX7ca3VkwTvFXmUp8hXWjUe'
-    )
-    console.log(dappUserIdentity)
-    const dappUserPublicKey = dappUserIdentity.publicKeys[0].data.toString(
-      'base64'
-    )
-    // foundUser.publicKey = foundUser.identity.publicKeys[0].data;
+  // async verifyAppRequest({ state }, actionRequest) {
+  //   // TODO remove async
+  //   const { loginPin } = state
+  //   console.log(loginPin)
+  //   const dappUserIdentity = await client.platform.identities.get(
+  //     '9jm6AbrR5wQTYp3SWfDJAmX7ca3VkwTvFXmUp8hXWjUe'
+  //   )
+  //   console.log(dappUserIdentity)
+  //   const dappUserPublicKey = dappUserIdentity.publicKeys[0].data.toString(
+  //     'base64'
+  //   )
+  //   // foundUser.publicKey = foundUser.identity.publicKeys[0].data;
 
-    const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
-      .privateKey
+  //   const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
+  //     .privateKey
 
-    // const plainUID_PIN = loginPin.toString()
-    const plainUID_PIN = '54321' // TODO make dynamic
+  //   // const plainUID_PIN = loginPin.toString()
+  //   const plainUID_PIN = '54321' // TODO make dynamic
 
-    const hashedAndEncryptedUID_PIN = actionRequest.uidPin
+  //   const hashedAndEncryptedUID_PIN = actionRequest.uidPin
 
-    const decryptedUID_PIN = DashmachineCrypto.decrypt(
-      curIdentityPrivKey,
-      hashedAndEncryptedUID_PIN,
-      dappUserPublicKey
-    ).data
-    const verified = DashmachineCrypto.verify(plainUID_PIN, decryptedUID_PIN)
-    console.log({ actionRequest }, 'pin verified?', verified)
+  //   const decryptedUID_PIN = DashmachineCrypto.decrypt(
+  //     curIdentityPrivKey,
+  //     hashedAndEncryptedUID_PIN,
+  //     dappUserPublicKey
+  //   ).data
+  //   const verified = DashmachineCrypto.verify(plainUID_PIN, decryptedUID_PIN)
+  //   console.log({ actionRequest }, 'pin verified?', verified)
 
-    return verified
-  },
+  //   return verified
+  // },
   // TODOO add targetcontractid to contract
   async processActionRequestPayload({ state, getters }, { actionRequest }) {
     console.log({ actionRequest })
@@ -547,7 +551,7 @@ export const actions = {
           const {
             privateKey,
             publicKey,
-          } = deriveDip9DelegatedCredentialsFromTimestamp(timestamp)
+          } = await deriveDip9DelegatedCredentialsFromTimestamp(timestamp)
 
           document = {
             encPvtKey: privateKey,
@@ -588,89 +592,89 @@ export const actions = {
     )
     console.log({ submitStatus })
   },
-  async encryptStuff({ state }, appDoc) {
-    const { loginPin } = state
-    const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
-      .privateKey
-    console.log('curIdentityPrivKey', curIdentityPrivKey.toString())
+  // async encryptStuff({ state }, appDoc) {
+  //   const { loginPin } = state
+  //   const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
+  //     .privateKey
+  //   console.log('curIdentityPrivKey', curIdentityPrivKey.toString())
 
-    const senderPublicKey = 'Ag/YNnbAfG0IpNeH4pfMzgqIsgooR36s5MzzYJV76TpO' // TODO derive from dash identity
+  //   const senderPublicKey = 'Ag/YNnbAfG0IpNeH4pfMzgqIsgooR36s5MzzYJV76TpO' // TODO derive from dash identity
 
-    //reference: Vendor userID (Reference)
-    // //CW decrypts the nonce
-    const encryptedNonce = appDoc.data.nonce
-    console.log('encryptedNonce', encryptedNonce)
-    const decryptedNonce = DashmachineCrypto.decrypt(
-      curIdentityPrivKey,
-      encryptedNonce,
-      senderPublicKey
-    ).data
-    console.log('decrypted nonce:', decryptedNonce)
-    //vid_pin: Encrypted Hash of [Vendor nonce + Vendor userID + CW Pin)
-    const plainVID_PIN = decryptedNonce.concat(
-      state.wdsVendorId,
-      loginPin.toString()
-    )
-    console.log('plainVID_PIN', plainVID_PIN)
-    //hash then encrypt for the vendors PK
-    const hashedVID_PIN = DashmachineCrypto.hash(plainVID_PIN).data
-    console.log('hashedVID_PIN', hashedVID_PIN)
-    const encryptedVID_PIN = DashmachineCrypto.encrypt(
-      curIdentityPrivKey,
-      hashedVID_PIN,
-      senderPublicKey
-    ).data
-    console.log('encryptedVID_PIN', encryptedVID_PIN)
+  //   //reference: Vendor userID (Reference)
+  //   // //CW decrypts the nonce
+  //   const encryptedNonce = appDoc.data.nonce
+  //   console.log('encryptedNonce', encryptedNonce)
+  //   const decryptedNonce = DashmachineCrypto.decrypt(
+  //     curIdentityPrivKey,
+  //     encryptedNonce,
+  //     senderPublicKey
+  //   ).data
+  //   console.log('decrypted nonce:', decryptedNonce)
+  //   //vid_pin: Encrypted Hash of [Vendor nonce + Vendor userID + CW Pin)
+  //   const plainVID_PIN = decryptedNonce.concat(
+  //     state.wdsVendorId,
+  //     loginPin.toString()
+  //   )
+  //   console.log('plainVID_PIN', plainVID_PIN)
+  //   //hash then encrypt for the vendors PK
+  //   const hashedVID_PIN = DashmachineCrypto.hash(plainVID_PIN).data
+  //   console.log('hashedVID_PIN', hashedVID_PIN)
+  //   const encryptedVID_PIN = DashmachineCrypto.encrypt(
+  //     curIdentityPrivKey,
+  //     hashedVID_PIN,
+  //     senderPublicKey
+  //   ).data
+  //   console.log('encryptedVID_PIN', encryptedVID_PIN)
 
-    //status: Encrypted [status+entropy] (0 = valid)
-    const statusCode = 0
-    const status = statusCode
-      .toString()
-      .concat(DashmachineCrypto.generateEntropy())
-    console.log('status', status)
-    const encryptedStatus = DashmachineCrypto.encrypt(
-      curIdentityPrivKey,
-      status,
-      senderPublicKey
-    ).data
-    console.log('encryptedStatus', encryptedStatus)
+  //   //status: Encrypted [status+entropy] (0 = valid)
+  //   const statusCode = 0
+  //   const status = statusCode
+  //     .toString()
+  //     .concat(DashmachineCrypto.generateEntropy())
+  //   console.log('status', status)
+  //   const encryptedStatus = DashmachineCrypto.encrypt(
+  //     curIdentityPrivKey,
+  //     status,
+  //     senderPublicKey
+  //   ).data
+  //   console.log('encryptedStatus', encryptedStatus)
 
-    //LoginResponse DocData
-    const loginResponseDocOpts = {
-      reference: state.wdsVendorId,
-      vid_pin: encryptedVID_PIN,
-      status: encryptedStatus,
-      temp_timestamp: appDoc.data.temp_timestamp,
-    }
-    console.log('loginResponseDocOpts')
-    console.dir(loginResponseDocOpts)
+  //   //LoginResponse DocData
+  //   const loginResponseDocOpts = {
+  //     reference: state.wdsVendorId,
+  //     vid_pin: encryptedVID_PIN,
+  //     status: encryptedStatus,
+  //     temp_timestamp: appDoc.data.temp_timestamp,
+  //   }
+  //   console.log('loginResponseDocOpts')
+  //   console.dir(loginResponseDocOpts)
 
-    const userIdentity = await client.platform.identities.get(state.identityId)
-    const loginResponseDocument = await client.platform.documents.create(
-      'wdsContract.TweetResponse',
-      userIdentity,
-      loginResponseDocOpts
-    )
-    console.log('loginReponse doc:')
-    console.dir(loginResponseDocument)
-    const documentBatch = {
-      create: [loginResponseDocument],
-      replace: [],
-      delete: [],
-    }
+  //   const userIdentity = await client.platform.identities.get(state.identityId)
+  //   const loginResponseDocument = await client.platform.documents.create(
+  //     'wdsContract.TweetResponse',
+  //     userIdentity,
+  //     loginResponseDocOpts
+  //   )
+  //   console.log('loginReponse doc:')
+  //   console.dir(loginResponseDocument)
+  //   const documentBatch = {
+  //     create: [loginResponseDocument],
+  //     replace: [],
+  //     delete: [],
+  //   }
 
-    const submitStatus = await client.platform.documents.broadcast(
-      documentBatch,
-      userIdentity
-    )
-    console.log(submitStatus)
-  },
+  //   const submitStatus = await client.platform.documents.broadcast(
+  //     documentBatch,
+  //     userIdentity
+  //   )
+  //   console.log(submitStatus)
+  // },
   freshLoginPins({ commit, state }) {
     if (loginPinInterval) clearInterval(loginPinInterval)
     commit('setLoginPin')
 
     const refreshInterval = 300000
-    loginPinInterval = setInterval(function() {
+    loginPinInterval = setInterval(function () {
       if (state.loginPinTimeLeft < 1) {
         commit('setLoginPin')
         commit('setLoginPinTimeLeft', refreshInterval)
@@ -701,19 +705,21 @@ export const actions = {
         { service: 'seed-4.evonet.networks.dash.org' },
         { service: 'seed-5.evonet.networks.dash.org' },
       ],
-      mnemonic: await dispatch('decryptMnemonic', {
-        encMnemonic: state.mnemonic,
-        pin: mnemonicPin,
-      }),
+      wallet: {
+        mnemonic: await dispatch('decryptMnemonic', {
+          encMnemonic: state.mnemonic,
+          pin: mnemonicPin,
+        }),
+      },
       apps: {
-        dpns: {
-          contractId: '7PBvxeGpj7SsWfvDSa31uqEMt58LAiJww7zNcVRP1uEM',
-        },
+        // dpns: {
+        //   contractId: '7PBvxeGpj7SsWfvDSa31uqEMt58LAiJww7zNcVRP1uEM',
+        // },
         primitives: {
-          contractId: '9FhqPBkmrmNkoUGw5qQgv7x6MUJJNNS4sfrTeUB1UsYk',
+          contractId: 'ChPk5vUoEJGEgRpAaAmMHoRBJiUf2JSvAaS6yb1KNjKp',
         },
         users: {
-          contractId: 'CGre4SQZKtZvirZLmtLQfsZZFTg9zv6PdjnoHb5ULS2a',
+          contractId: 'A6UoYfsCUj6S9yZDYU4BejYfu6bABZsLyzne4BfQjZLV',
         },
       },
     })
@@ -722,7 +728,6 @@ export const actions = {
     clientTimeout = setTimeout(() => {
       commit('setClientErrors', 'Connection to Evonet timed out.')
     }, 500000) // TODO DEPLOY set sane timeout
-    const isReady = await client.isReady()
     clearInterval(clientTimeout)
 
     //
@@ -730,13 +735,14 @@ export const actions = {
     // DEPLOY remove cli debug outputs
     //
     //
-    const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
+    const account = await client.wallet.getAccount()
+    const curIdentityHDKey = await account.getIdentityHDKey(0, 'user')
     console.log({ curIdentityHDKey })
     console.log({ publicKey: curIdentityHDKey })
     console.log({ publicKeyString: curIdentityHDKey.publicKey.toString() })
     console.log(curIdentityHDKey.toString('base64'))
 
-    const curIdentityPrivKey = client.account.getIdentityHDKey(0, 'user')
+    const curIdentityPrivKey = account.getIdentityHDKey(0, 'user')
     console.log('private key', curIdentityPrivKey.toString())
     // const curIdentityPubKey = client.account.getIdentityHDKey(0, 'user')
     //   .publickey
@@ -765,28 +771,26 @@ export const actions = {
     // const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
     // .publicKey
     // console.log({ curIdentityHDKey })
-    const encryptedVID_PIN = DashmachineCrypto.encrypt(
-      curIdentityPrivKey,
-      '54321',
-      '0201e5b73c30a443081a0157f96e0e4ed5dfca3dcf304be86970be13c87cad6609'
-    ).data
-    console.log('encryptedVID_PIN', encryptedVID_PIN)
+    // const encryptedVID_PIN = DashmachineCrypto.encrypt(
+    //   curIdentityPrivKey,
+    //   '54321',
+    //   '0201e5b73c30a443081a0157f96e0e4ed5dfca3dcf304be86970be13c87cad6609'
+    // ).data
+    // console.log('encryptedVID_PIN', encryptedVID_PIN)
 
-    console.log({ isReady })
     // commit('setAndEncMnemonic', {
     //   mnemonic: client.wallet.mnemonic,
     //   pin: '12345',
     // })
     console.log({ client })
 
-    const { account } = client
-
-    console.log('init Funding address', account.getUnusedAddress().address)
+    console.log(
+      'init Funding address',
+      await account.getUnusedAddress().address
+    )
     commit('setFundingAddress', account.getUnusedAddress().address)
     console.log('init Confirmed Balance', account.getConfirmedBalance())
     console.log('init Unconfirmed Balance', account.getUnconfirmedBalance())
-
-    return client.isReady()
   },
   async getMagicInternetMoney() {
     console.log('Awaiting faucet drip..')
@@ -808,8 +812,6 @@ export const actions = {
   async registerIdentity({ commit }) {
     console.log('Registering identity...')
     try {
-      await client.isReady()
-      console.log(await client.isReady())
       const identity = await client.platform.identities.register()
       commit('setIdentity', identity.id)
       console.log({ identity })
@@ -820,17 +822,15 @@ export const actions = {
   },
   registerIdentityOnceBalance({ dispatch }) {
     if (registerIdentityInterval) clearInterval(registerIdentityInterval)
-
-    registerIdentityInterval = setInterval(function() {
+    console.log({ client })
+    registerIdentityInterval = setInterval(async function () {
+      const account = await client.wallet.getAccount()
       console.log('Waiting for positive balance to register identity..')
-      console.log(
-        'init Funding address',
-        client.account.getUnusedAddress().address
-      )
-      console.log(client.account.getTotalBalance())
-      console.log(client.account.getConfirmedBalance())
-      console.log(client.account.getUnconfirmedBalance())
-      if (client.account.getConfirmedBalance() > 0) {
+      console.log('init Funding address', account.getUnusedAddress().address)
+      console.log(account.getTotalBalance())
+      console.log(account.getConfirmedBalance())
+      console.log(account.getUnconfirmedBalance())
+      if (account.getConfirmedBalance() > 0) {
         dispatch('registerIdentity')
         clearInterval(registerIdentityInterval)
       }
@@ -839,15 +839,16 @@ export const actions = {
   async registerNameOnceBalance({ state, dispatch }) {
     if (registerNameInterval) clearInterval(registerNameInterval)
     console.log('Awaiting client ..')
-    const clientReady = await client.account.isReady()
-    console.log('..client is ready.', clientReady)
-    if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
+    console.log({ client })
+    const account = await client.wallet.getAccount()
+    console.log({ account })
+    if (account.getConfirmedBalance() > 10000 && state.identityId) {
       dispatch('registerName')
     } else {
-      registerNameInterval = setInterval(function() {
+      registerNameInterval = setInterval(function () {
         console.log('Waiting for positive balance to register name..')
-        console.log(client.account.getConfirmedBalance())
-        if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
+        console.log(account.getConfirmedBalance())
+        if (account.getConfirmedBalance() > 10000 && state.identityId) {
           dispatch('registerName')
           clearInterval(registerNameInterval)
         }
@@ -857,12 +858,12 @@ export const actions = {
   async registerUserOnceBalance({ state, dispatch }, { userDoc }) {
     if (registerUserInterval) clearInterval(registerUserInterval)
     console.log('Awaiting client ..')
-    const clientReady = await client.account.isReady()
-    console.log('..client is ready.', clientReady)
-    if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
+    // console.log('..client is ready.', clientReady)
+    const account = await client.wallet.getAccount()
+    if (account.getConfirmedBalance() > 10000 && state.identityId) {
       dispatch('registerUser', { userDoc })
     } else {
-      registerUserInterval = setInterval(function() {
+      registerUserInterval = setInterval(function () {
         console.log('Waiting for positive balance to register name..')
         console.log(client.account.getConfirmedBalance())
         if (client.account.getConfirmedBalance() > 10000 && state.identityId) {
@@ -882,7 +883,8 @@ export const actions = {
     console.log('Found valid identity:')
     console.log({ identity })
 
-    const curIdentityHDKey = client.account.getIdentityHDKey(0, 'user')
+    const account = await client.wallet.getAccount()
+    const curIdentityHDKey = account.getIdentityHDKey(0, 'user')
     console.log({ publicKeyString: curIdentityHDKey.publicKey.toString() })
 
     const publicKey = curIdentityHDKey.publicKey.toString()
@@ -1000,7 +1002,6 @@ export const actions = {
     console.log({ dappName, typeLocator, queryOpts })
     commit('setSyncing', true)
     try {
-      await client.isReady()
       const documents = await client.platform.documents.get(
         `${dappName}.${typeLocator}`,
         queryOpts
@@ -1015,7 +1016,6 @@ export const actions = {
     }
   },
   async getContract({ state }) {
-    await client.isReady()
     const contract = await client.platform.contracts.get(state.wdsContractId)
     console.log({ contract })
     return contract

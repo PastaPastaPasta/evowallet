@@ -101,12 +101,7 @@ export default {
     }
   },
   computed: {
-    ...mapGetters([
-      'curAccountDocId',
-      'curActionRequest',
-      'lastRequest',
-      'clientIsReady',
-    ]),
+    ...mapGetters(['curAccountDocId', 'curActionRequest', 'lastRequest']),
   },
   created() {
     // if (this.$store.state.name.isRegistered === false) this.$router.push('/')
@@ -147,6 +142,7 @@ export default {
       'setCurActionRequest',
       'setCurActionRequestLoading',
       'sendDash',
+      'clientIsReady',
     ]),
     copyPinToClipboard() {
       try {
@@ -231,7 +227,8 @@ export default {
       }
     },
     async pollPaymentRequest() {
-      if (!this.clientIsReady) {
+      const isReady = await this.clientIsReady()
+      if (!isReady) {
         console.log('No client available, waiting for connection..')
         await sleep(5000)
         this.pollPaymentRequest()
@@ -258,6 +255,7 @@ export default {
         queryOpts,
       })
 
+      console.log({ documents })
       let [paymentRequest] = documents
 
       if (paymentRequest) {
@@ -299,7 +297,7 @@ export default {
           signDoc.actionRequired = true
           console.log({ signDoc })
           this.$store.commit('setCurActionRequest', signDoc) // TODO refactor to CurRequest
-          this.playNotification()
+          this.playNotificatiopickn()
 
           console.log({ paymentRequest })
           this.$store.commit('setLastRequest', paymentRequest)
@@ -309,7 +307,8 @@ export default {
       this.pollPaymentRequest()
     },
     async pollDocumentActionRequest() {
-      if (!this.clientIsReady) {
+      const isReady = await this.clientIsReady()
+      if (!isReady) {
         console.log('No client available, waiting for connection..')
         await sleep(5000)
         this.pollDocumentActionRequest()
@@ -339,6 +338,7 @@ export default {
         queryOpts,
       })
 
+      console.log({ documents })
       let [actionRequest] = documents
 
       if (actionRequest) {
