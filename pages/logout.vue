@@ -11,7 +11,10 @@
       <br />
       <span
         class="display-2"
-        style="color: #ffffff59; font-family: 'Montserrat', sans-serif !important; "
+        style="
+          color: #ffffff59;
+          font-family: 'Montserrat', sans-serif !important;
+        "
       >
         EvoWallet
       </span>

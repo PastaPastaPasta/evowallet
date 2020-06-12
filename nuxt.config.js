@@ -107,7 +107,10 @@ export default {
      ** You can extend webpack config here
      */
     // extend(config,ctx) {
-    extend(config) {
+    extend(config, ctx) {
+      if (ctx.isDev) {
+        config.devtool = ctx.isClient ? 'source-map' : 'inline-source-map'
+      }
       config.module.rules.push({
         test: /\.(ogg|mp3|wav|mpe?g)$/i,
         loader: 'file-loader',

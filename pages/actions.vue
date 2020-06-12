@@ -101,12 +101,7 @@ export default {
     }
   },
   computed: {
-    ...mapGetters([
-      'curAccountDocId',
-      'curActionRequest',
-      'lastRequest',
-      'clientIsReady',
-    ]),
+    ...mapGetters(['curAccountDocId', 'curActionRequest', 'lastRequest']),
   },
   created() {
     // if (this.$store.state.name.isRegistered === false) this.$router.push('/')
@@ -147,6 +142,7 @@ export default {
       'setCurActionRequest',
       'setCurActionRequestLoading',
       'sendDash',
+      'clientIsReady',
     ]),
     copyPinToClipboard() {
       try {
@@ -231,7 +227,8 @@ export default {
       }
     },
     async pollPaymentRequest() {
-      if (!this.clientIsReady) {
+      const isReady = await this.clientIsReady()
+      if (!isReady) {
         console.log('No client available, waiting for connection..')
         await sleep(5000)
         this.pollPaymentRequest()
@@ -258,6 +255,7 @@ export default {
         queryOpts,
       })
 
+      console.log({ documents })
       let [paymentRequest] = documents
 
       if (paymentRequest) {
@@ -265,15 +263,21 @@ export default {
         paymentRequest = paymentRequest.toJSON()
         console.log({ paymentRequestJSON: paymentRequest })
 
-        const { uidPin } = paymentRequest
-        console.log({ uidPin })
         // const payload = JSON.parse(paymentRequest.JSONDocString) // TODO handle invalid json strings
 
         // DEPLOY TODO waiting for encryption lib
         // const verifiedApp = await this.verifyAppRequest(actionRequest) // Doc passes our pin test
         // const isPinVerified = verifiedApp.success
-        const isPinVerified = true
-        // const isPinVerified = uidPin === this.$store.state.loginPin // DEPLOY TODO check encryption
+        const { uidPin } = paymentRequest
+        const { loginPin } = this.$store.state
+        console.log({ uidPin })
+        const decryptedRequestPin = await this.$store.dispatch(
+          'decryptRequestPin',
+          { identityId: paymentRequest.$ownerId }
+        )
+        console.log('decryptedRequestPin :>> ', decryptedRequestPin)
+        const isPinVerified = decryptedRequestPin === loginPin
+        console.log({ loginPin })
         console.log({ isPinVerified })
 
         let isPaymentRequestNew = false
@@ -281,13 +285,19 @@ export default {
           contractId: paymentRequest.contractId, // TODO next iteration senderContractId
           type: paymentRequest.$type,
         })
-        if (!lastPaymentRequest || lastPaymentRequest.id != paymentRequest.id) {
+        if (
+          !lastPaymentRequest ||
+          lastPaymentRequest.$id != paymentRequest.$id
+        ) {
           isPaymentRequestNew = true
         }
+        console.log('lastPaymentRequest :>> ', lastPaymentRequest)
+        console.log('paymentRequest :>> ', paymentRequest)
         console.log({ isPaymentRequestNew })
 
         // We have an new (unseen), legitimate (pinVerified) ActionRequest, set notification details for approval
-        if (isPinVerified && isPaymentRequestNew) {
+        // if (isPinVerified && isPaymentRequestNew) { // TODO sync PIN time to delegatedCredentials time
+        if (true && isPaymentRequestNew) {
           const { satoshis, toAddress } = paymentRequest
           const dashAmount = Unit.fromSatoshis(satoshis).to(Unit.BTC)
 
@@ -309,7 +319,8 @@ export default {
       this.pollPaymentRequest()
     },
     async pollDocumentActionRequest() {
-      if (!this.clientIsReady) {
+      const isReady = await this.clientIsReady()
+      if (!isReady) {
         console.log('No client available, waiting for connection..')
         await sleep(5000)
         this.pollDocumentActionRequest()
@@ -329,7 +340,7 @@ export default {
         orderBy: [['unixTimestamp', 'desc']],
         where: [
           ['accountDocId', '==', this.curAccountDocId],
-          ['unixTimestamp', '<', 110], //recentTimestamp],
+          // ['unixTimestamp', '<', 110], //recentTimestamp],
         ], // TODO where unixTimestamp less than 1 min old
       }
 
@@ -339,6 +350,7 @@ export default {
         queryOpts,
       })
 
+      console.log({ documents })
       let [actionRequest] = documents
 
       if (actionRequest) {
@@ -346,18 +358,27 @@ export default {
         actionRequest = actionRequest.toJSON()
         console.log({ actionRequestJSON: actionRequest })
 
-        console.log(JSON.parse(actionRequest.JSONDocString))
+        // console.log(JSON.parse(actionRequest.JSONDocString))
+
+        const payload = JSON.parse(
+          JSON.parse('"' + actionRequest.JSONDocString + '"')
+        ) // TODO handle invalid json strings
+        console.log(
+          'actionRequest.JSONDocString :>> ',
+          actionRequest.JSONDocString
+        )
+        console.log('payload :>> ', payload)
 
         const { uidPin } = actionRequest
-        const payload = JSON.parse(actionRequest.JSONDocString) // TODO handle invalid json strings
-        // const docId = docARJSON.id
-
-        // DEPLOY TODO waiting for encryption lib
-        // const verifiedApp = await this.verifyAppRequest(actionRequest) // Doc passes our pin test
-        // const isPinVerified = verifiedApp.success
-        // const isPinVerified = true
-        let isPinVerified = uidPin === this.$store.state.loginPin // DEPLOY TODO check encryption
-        isPinVerified = true // DEPLOY TODO delete for real pin check
+        const { loginPin } = this.$store.state
+        console.log({ uidPin })
+        const decryptedRequestPin = await this.$store.dispatch(
+          'decryptRequestPin',
+          { encRequestPin: uidPin, identityId: actionRequest.$ownerId }
+        )
+        console.log('decryptedRequestPin :>> ', decryptedRequestPin.data)
+        const isPinVerified = decryptedRequestPin.data === loginPin
+        console.log({ loginPin })
         console.log({ isPinVerified })
 
         let isActionRequestNew = false
@@ -365,14 +386,17 @@ export default {
           contractId: actionRequest.contractId, // TODO v2 should be senderContractId
           type: actionRequest.$type,
         })
-
-        if (!lastActionRequest || lastActionRequest.id != actionRequest.id) {
+        console.log('lastActionRequest :>> ', lastActionRequest)
+        console.log('actionRequest.$id :>> ', actionRequest.$id)
+        if (!lastActionRequest || lastActionRequest.$id != actionRequest.$id) {
           isActionRequestNew = true
         }
         console.log({ isActionRequestNew })
 
         // We have an new (unseen), legitimate (pinVerified) ActionRequest, set notification details for approval
+        // eslint-disable-next-line no-constant-condition
         if (isPinVerified && isActionRequestNew) {
+          // MUST DO undo true
           // TODO sometimes the sound plays but the v-card doesn't update, consider a watcher / state based solution instead
           // Yes should definitely be in state so it can be reset upon account switch
           console.log('THIS SHOULD SHOW IN THE VIEWPORT')

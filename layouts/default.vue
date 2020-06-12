@@ -63,7 +63,7 @@
         />
       </a>
       <v-toolbar-title
-        style="font-family: 'Montserrat', sans-serif; font-size: 1.5rem"
+        style="font-family: 'Montserrat', sans-serif; font-size: 1.5rem;"
         v-text="title"
       />
       <v-spacer />
@@ -125,7 +125,7 @@
       </v-snackbar>
     </v-content>
     <v-footer padless app color="white">
-      <span style="width: 100%" class="text-center">
+      <span style="width: 100%;" class="text-center">
         {{ new Date().getFullYear() }} —
         <strong><a href="https://dash.org" target="_blank">Dash.org</a></strong>
       </span>
@@ -213,10 +213,10 @@ export default {
       this.clearSession()
       this.$router.replace('/logout')
     },
-    addAccount() {
+    async addAccount() {
       this.drawer = false
       this.overlayUnlock = false
-      this.$router.push('/')
+      await this.$router.push('/')
       this.clearSession()
       // this.initOrCreateAccount()
       this.$store.dispatch('initOrCreateAccount', { mnemonicPin: '' })

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <p style="font-family: 'Open Sans', sans-serif; font-size: 12pt">
+    <p style="font-family: 'Open Sans', sans-serif; font-size: 12pt;">
       You can also
       <a class="font-weight-bold" @click="mnemonicDialog = true"> login</a>
       into your existing Dash Account.
@@ -90,6 +90,7 @@ export default {
       'getCurPubKey',
     ]),
     async login() {
+      await this.clearSession()
       await this.$store.dispatch('setAndEncMnemonic', {
         mnemonic: this.mnemonicText,
         pin: this.mnemonicPin,
@@ -115,7 +116,6 @@ export default {
 
       console.log('Restoring from mnemonic via userhashmap', userDoc)
       // FXIME sort out which are actually async and are causing race conditions
-      await this.clearSession()
 
       // this.$store.commit('setMnemonicAsIs', account.mnemonic)
       await this.$store.commit('setIdentity', userDoc.data.identityId)
