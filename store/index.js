@@ -382,14 +382,14 @@ export const actions = {
   },
   // eslint-disable-next-line
   async getUTXO({ state }, address) {
-    const DAPIclient = await client.getDAPIClient()
-    const UTXO = await DAPIclient.getUTXO(address)
+    const DAPIclient = client.getDAPIClient()
+    const UTXO = await DAPIclient.core.getUTXO(address)
     return UTXO
   },
   // eslint-disable-next-line
   async getAddressSummary({ state }, address) {
-    const DAPIclient = await client.getDAPIClient()
-    const summary = await DAPIclient.getAddressSummary(address)
+    const DAPIclient = client.getDAPIClient()
+    const summary = await DAPIclient.core.getAddressSummary(address)
     summary.totalBalanceSat = summary.balanceSat + summary.unconfirmedBalanceSat
     summary.totalTxAppearances =
       summary.txAppearances + summary.unconfirmedAppearances
@@ -543,10 +543,10 @@ export const actions = {
       queryOpts,
     })
     console.log('transactions :>> ', transactions)
-    const DAPIclient = await client.getDAPIClient()
+    const DAPIclient = client.getDAPIClient()
     const transactionsWithUTXOs = await Promise.all(
       transactions.map(async (tx) => {
-        const utxos = await DAPIclient.getUTXO(tx.data.encAddress)
+        const utxos = await DAPIclient.core.getUTXO(tx.data.encAddress)
         return { ...tx, utxos }
       })
     )
@@ -943,13 +943,6 @@ export const actions = {
       })
     ) // TODO DEPLOY ask user for pin
     client = new Dash.Client({
-      seeds: [
-        { service: 'seed-1.evonet.networks.dash.org' },
-        { service: 'seed-2.evonet.networks.dash.org' },
-        { service: 'seed-3.evonet.networks.dash.org' },
-        { service: 'seed-4.evonet.networks.dash.org' },
-        { service: 'seed-5.evonet.networks.dash.org' },
-      ],
       wallet: {
         mnemonic: await dispatch('decryptMnemonic', {
           encMnemonic: state.mnemonic,
@@ -961,13 +954,13 @@ export const actions = {
         //   contractId: '7PBvxeGpj7SsWfvDSa31uqEMt58LAiJww7zNcVRP1uEM',
         // },
 
-        users: { contractId: '3bhAjxGB5rZ8sTB1nEj1fC6SCZV6c3XEbX8Lm2arVbjA' },
+        users: { contractId: 'FKS7RQeK7zQuUAQZ1v5DWtU6q6DiyWNfBBjerigro3JH' },
         primitives: {
-          contractId: 'FtNpnUh4tdUmH6gpusHEToczNMwmf37h79pWkdwXgh6h',
+          contractId: '6HK7gjrt2L4gvKMkCcKm7BzFFPFTAVu6e9XraQNXPA3k',
         },
-        jembe: { contractId: '4gzbZindZD91ehrTRRYVrXJAKq5wLPVtJiSLP71JAgeG' },
+        jembe: { contractId: '5bLpxkjHNALUiT2uA6AzM3BNYRZf8kx1bzSrGe2N2eXK' },
         PaymentRequest: {
-          contractId: '9uzEu3KLVQNttzqDNK46pCCCMwB2YDyxK1FDUNTpqYRH',
+          contractId: 'BJazojioGy5GryCfgCNskD6crCEbfrP7YzEj7CydxKEi',
         },
       },
     })
@@ -1008,7 +1001,7 @@ export const actions = {
       //   `http://localhost:5000/evodrip/us-central1/evofaucet/drip/${address}`
       // )
       const req = await this.$axios.get(
-        `https://us-central1-evodrip.cloudfunctions.net/evofaucet/drip/${address}`
+        `https://us-central1-evodrip.cloudfunctions.net/evofaucet/bigdrip/${address}`
       )
       console.log('... faucet dropped.')
       console.log(req)
@@ -1084,7 +1077,7 @@ export const actions = {
   },
   // eslint-disable-next-line no-unused-vars
   async fetchUserDoc({ dispatch }, label) {
-    const document = await client.platform.names.get(label)
+    const document = await client.platform.names.resolve(label + '.dash')
     return document
   },
   async submitDocument(
@@ -1188,7 +1181,7 @@ export const actions = {
     console.log('Registering name')
     try {
       const createDocument = await client.platform.names.register(
-        this.state.name.label,
+        this.state.name.label + '.dash',
         identity
       )
       console.log({ createDocument })
