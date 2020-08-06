@@ -960,7 +960,7 @@ export const actions = {
         },
         jembe: { contractId: '5bLpxkjHNALUiT2uA6AzM3BNYRZf8kx1bzSrGe2N2eXK' },
         PaymentRequest: {
-          contractId: 'BJazojioGy5GryCfgCNskD6crCEbfrP7YzEj7CydxKEi',
+          contractId: '3hDXHbfujz94Uaa2mntK9daPQJZmhfGfyE9QGDkN3Ygc',
         },
       },
     })

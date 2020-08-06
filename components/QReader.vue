@@ -33,7 +33,8 @@ export default {
 
   data() {
     return {
-      result: '',
+      requesterUserName: '',
+      invoiceId: '',
       dragover: false,
       error: null,
       noStreamApiSupport: false,
@@ -48,12 +49,18 @@ export default {
       'showSnackbar',
     ]),
     async sendPaymentIntent() {
-      const { submitDocument, freshAddress, fetchUserDoc, showSnackbar } = this
+      const {
+        submitDocument,
+        freshAddress,
+        fetchUserDoc,
+        invoiceId,
+        showSnackbar,
+      } = this
       showSnackbar({
-        text: `Sending PaymentIntent to: ${this.result}`,
+        text: `Sending PaymentIntent to: ${this.requesterUserName}`,
         color: '#008de4',
       })
-      const userDoc = await fetchUserDoc(this.result)
+      const userDoc = await fetchUserDoc(this.requesterUserName)
 
       const contract = 'PaymentRequest'
       const typeLocator = 'PaymentIntent'
@@ -69,6 +76,7 @@ export default {
         requesterUserName,
         requesteeUserId,
         requesteeUserName,
+        invoiceId,
         encRefundAddress,
         timestamp: timestamp(),
       }
@@ -83,7 +91,10 @@ export default {
       try {
         const { content } = await promise
 
-        this.result = content
+        const decoded = content.split('#')
+        this.requesterUserName = decoded[0]
+        this.invoiceId = decoded[1] ? decoded[1] : ''
+
         this.error = null
         this.sendPaymentIntent()
       } catch (error) {
@@ -101,7 +112,9 @@ export default {
       this.dragover = isDraggingOver
     },
     onDecode(result) {
-      this.result = result
+      const decoded = result.split('#')
+      this.requesterUserName = decoded[0]
+      this.invoiceId = decoded[1] ? decoded[1] : ''
       this.sendPaymentIntent()
     },
 
